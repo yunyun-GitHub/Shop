@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rich Text Editor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
+        integrity="sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N" crossorigin="anonymous">
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@2.3.1/dist/purify.min.js"></script>
+
+
+    <style>
+        body {
+            background-color: #e9ecef;
+        }
+
+        .shadow {
+            box-shadow: 0px 0px 10px #888888;
+        }
+
+        .minheight {
+            min-height: 300px;
+        }
+
+        textarea {
+            width: 100%;
+            border: none;
+            background-color: #e9ecef;
+            /*下邊框顏色和寬度*/
+            /* border-bottom: 1px dashed #888888; */
+            /*去掉選中時的邊框*/
+            outline: none;
+            text-align: center;
+            padding: 2px 15px;
+            font-size: 24pt;
+            /* 禁用调整大小 */
+            resize: none;
+            /* js自適應高度,無需隐藏滚动条 */
+            /* overflow: hidden; */
+        }
+
+        #editor {
+            margin: 10px 0px 0px 0px;
+            padding: 2px 15px;
+            outline: none;
+            /* font-size: 14pt; */
+        }
+
+        #editor img {
+            max-width: 100%;
+            vertical-align: text-bottom;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="container">
+        <br>
+        <div id="toolbar">
+            <button id="bold" type="button" class="btn btn-outline-secondary">粗體</button>
+            <button id="italic" type="button" class="btn btn-outline-secondary">斜體</button>
+            <!-- <button id="underline">底線</button> -->
+            <!-- <input type="file" id="insert_image">
+            <button id="insert">插入</button> -->
+        </div>
+        <br>
+        <div class="shadow">
+            <textarea id="title" placeholder="請輸入標題" rows="1"></textarea>
+            <div id="editor" class="minheight" contenteditable="true">
+                <p>這是第一段文本</p>
+                <p>這是第二段文本</p>
+            </div>
+        </div>
+        <br>
+        <button id="submit-btn" class="btn btn-outline-secondary">提交</button>
+    </div>
+
+    <script>
+        // 粗體
+        $("#bold").click(function () {
+            document.execCommand("bold", false, null);
+        });
+
+        // 斜體
+        $("#italic").click(function () {
+            document.execCommand("italic", false, null);
+        });
+
+        // // 底線
+        // $("#underline").click(function () {
+        //   document.execCommand("underline", false, null);
+        // });
+
+        // 標題欄自適應高度
+        $('#title').on('input', function () {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+
+            const lineHeight = parseInt(getComputedStyle(this).lineHeight);  // 獲取行高
+            const rows = Math.ceil(this.scrollHeight / lineHeight);  // 獲取行數
+
+            // 一行的時候居中,多行的時候左對齊
+            if (rows > 2) {
+                this.style.textAlign = "left";
+            } else {
+                this.style.textAlign = "center";
+            }
+        });
+
+        // // 手動插入圖片
+        // $("#insert").click(function () {
+        //   var file = $("#insert_image")[0].files[0];
+        //   var reader = new FileReader();
+        //   reader.onload = function (e) {
+        //     var image = document.createElement("img");
+        //     image.src = e.target.result;
+        //     // image.style.display = "block";
+        //     // image.style.clear = "both";
+        //     document.execCommand("insertHTML", false, image.outerHTML);
+        //   };
+        //   reader.readAsDataURL(file);
+        // });
+
+        paste();  // 直接從粘貼板粘貼文字,圖片
+
+        (function () {
+            // 防止刪除最後一個p標簽
+            const editor = document.getElementById('editor');
+            editor.addEventListener('keydown', (event) => {
+                if (event.key === 'Backspace' && editor.childElementCount < 2 && editor.lastElementChild.textContent === '' && editor.lastElementChild.getElementsByTagName('img').length < 1) {
+                    event.preventDefault();
+                }
+            });
+        })();
+
+        // ==================================================下面是功能函數==================================================
+
+        function paste() {  // 直接粘貼
+            const editor = document.getElementById("editor");
+            editor.addEventListener("paste", (event) => {
+                const dataTransfer = event.clipboardData || event.originalEvent.clipboardData;
+                const items = dataTransfer.items;
+                console.log("粘貼板有 " + items.length + " 種類型");
+
+                let hasHtml = false;
+                let hasText = false;
+                let hasImage = false;
+                for (let i = 0; i < items.length; i++) {
+                    console.log(items[i].type);
+                    if (items[i].type === "text/html") {
+                        hasHtml = true;
+                    } else if (items[i].type.indexOf("image") !== -1) {
+                        hasImage = true;
+                    } else if (items[i].type === "text/plain") {
+                        hasText = true;
+                    }
+                }
+
+                if (hasHtml) {
+                    console.log("有HTML类型,按HTML粘貼");
+                    event.preventDefault();  // 阻止默认的粘贴行为
+                    const html = dataTransfer.getData("text/html");  // 從粘貼板获取html
+                    var fragment = cleanHtml(html);  // 去掉所有的樣式，只保留文本和圖片
+                    insertNode(fragment, editor);  // 在光標処插入乾净的html
+
+                } else if (!hasHtml && hasText) {
+                    console.log("沒有HTML但有文本类型,按文本粘貼");
+                    //  // event.preventDefault();  // 這裏注釋掉，即按默認行为粘贴，如有必要再手動處理.
+                    // const text = dataTransfer.getData("text/plain");  // 获取文本内容
+
+                } else if (!hasHtml && !hasText && hasImage) {
+                    console.log("沒有HTML沒有文本有图片类型,需要再判斷若全爲圖片,則按圖片粘貼");
+                    event.preventDefault();  // 阻止默认的粘贴行为
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf("image") !== -1) {
+                            const blob = items[i].getAsFile();
+                            const imageUrl = URL.createObjectURL(blob);
+                            const img = new Image();
+                            img.src = imageUrl;
+                            const range = window.getSelection().getRangeAt(0);  // 获取当前选中的文本范围
+                            range.deleteContents();  // 删除当前选中的文本
+                            range.insertNode(img);  // 插入到文本范围的起始位置
+                            const newRange = document.createRange();  // 创建一个新的 Range 对象
+                            newRange.setStartAfter(img);  // 将 Range 的起始位置设置为插入图片的后面
+                            window.getSelection().removeAllRanges();  // 刪除所有 Range 对象
+                            window.getSelection().addRange(newRange);  // 重新设置选中状态，将光标放在图片后面
+                        }
+                    }
+                } else {
+                    console.log("其他情况不粘貼");
+                    event.preventDefault();  // 阻止默认的粘贴行为
+                }
+            });
+        }
+
+        function cleanHtml(html) {
+            // 去掉所有的樣式，只保留文本和圖片
+            // var safeHtml = DOMPurify.sanitize(html, {ALLOWED_ATTR: ['src']});  // 使用開源的DOMPurify過濾HTML中的不安全元素、屬性或腳本，從而防止XSS攻擊
+            // console.log(safeHtml);
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(html, "text/html");  // 使用DOMParser将安全的HTML代码转换为DOM節點
+            // console.log(doc.documentElement);
+            const fragment = document.createDocumentFragment();
+            var docBody = doc.body;
+            document.body.appendChild(docBody);  // 將docBody節點插入到文檔
+            recursion(docBody);
+            document.body.removeChild(docBody);  // 將docBody節點刪除到文檔
+            return fragment;
+
+            function recursion(node, nodeP = false) {  // nodeP是上一個篩選的節點, node是當前節點
+                if (node.nodeType === Node.TEXT_NODE && node.nodeValue.trim() !== "") {  // 如果是文本節點,則用trim()去除空格和换行符,判斷是否為真正的文本(这是因为,HTML代码中的空格和换行符会被解析为文本节点,因此子节点數量可能超过预期數量)
+                    if (nodeP.nodeType === Node.TEXT_NODE) {
+                        if (isNodeOnNewLine(nodeP, node)) {
+                            // console.log("前節點是上一個文本段落,直接換行");
+                            let pTag = document.createElement('p');
+                            let textNode = document.createTextNode(node.nodeValue.trim());
+                            pTag.appendChild(textNode);
+                            fragment.appendChild(pTag);
+                        } else {
+                            // console.log("前節點是當前文本段落,不換行");
+                            var lastPNode = fragment.lastChild;
+                            lastPNode.lastChild.nodeValue += node.nodeValue.trim();
+                        }
+                    } else if (nodeP.nodeType === Node.ELEMENT_NODE && nodeP.tagName === "IMG") {
+                        // console.log("前節點是圖片,直接換行");
+                        let pTag = document.createElement('p');
+                        let textNode = document.createTextNode(node.nodeValue.trim());
+                        pTag.appendChild(textNode);
+                        fragment.appendChild(pTag);
+                    } else {
+                        // console.log("前節點是false,説明是開頭,暫時換行");
+                        let pTag = document.createElement('p');
+                        let textNode = document.createTextNode(node.nodeValue.trim());
+                        pTag.appendChild(textNode);
+                        fragment.appendChild(pTag);
+                    }
+                    console.log(node.nodeValue.trim());
+                    return node;
+                } else if (node.nodeType === Node.ELEMENT_NODE) {  // 如果是元素節點，繼續判斷是否為圖片，否則遞歸遍历它的子节点積極
+                    if (node.tagName === "IMG") {
+                        console.log(node.src);
+                        let pTag = document.createElement('p');
+                        const img = new Image();
+                        img.src = node.src;
+                        pTag.appendChild(img);
+                        fragment.appendChild(pTag);
+                        return node;
+                    } else {
+                        for (var i = 0; i < node.childNodes.length; i++) {
+                            nodeP = recursion(node.childNodes[i], nodeP) || nodeP;
+                        }
+                        return nodeP;
+                    }
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        function isNodeOnNewLine(Node1, Node2) {
+            // 判斷兩個節點是否同出一行
+
+            // 首先找到两个节点的共同祖先元素节点
+            let ancestor = Node1.parentElement;
+            while (ancestor && !ancestor.contains(Node2)) {
+                ancestor = ancestor.parentElement;
+            }
+            // console.log("祖先節點: " + ancestor.tagName);
+
+            var leftNode = false;
+            var rightNode = false;
+            for (var i = 0; i < ancestor.childNodes.length; i++) {
+                let childNode = ancestor.childNodes[i];
+                if (childNode === Node1 || childNode === Node2 || (childNode.nodeType === Node.ELEMENT_NODE && (childNode.contains(Node1) || childNode.contains(Node2)))) {
+                    if (!leftNode && !rightNode) {
+                        leftNode = childNode;
+                    } else if (leftNode && !rightNode) {
+                        rightNode = childNode;
+                    }
+                }
+            }
+            // console.log("leftNode: " + leftNode.tagName);
+            // console.log("rightNode: " + rightNode.tagName);
+
+            const array = [];
+            leftre(leftNode);
+            rightre(rightNode);
+
+            let start = false;
+            let isWrap = false;
+            for (var i = 0; i < array.length; i++) {
+                let eNode = array[i];
+                if (eNode === Node1 || eNode === Node2) {
+                    start = !start;
+                    if (eNode.nodeType === Node.ELEMENT_NODE) {
+                        isWrap = isElementOnNewLine(eNode);
+                    }
+                } else if (start) {
+                    isWrap = isElementOnNewLine(eNode);
+                }
+                if (isWrap) {
+                    break;
+                }
+            }
+
+            return isWrap;
+
+            function leftre(node) {
+                if (node === Node1 || node === Node2) {
+                    array.push(node);
+                }
+                else if (node.nodeType === Node.ELEMENT_NODE) {
+                    for (var i = 0; i < node.childNodes.length; i++) {
+                        leftre(node.childNodes[i]);
+                    }
+                    array.push(node);
+                }
+            }
+
+            function rightre(node) {
+                if (node === Node1 || node === Node2) {
+                    array.push(node);
+                }
+                else if (node.nodeType === Node.ELEMENT_NODE) {
+                    array.push(node);
+                    for (var i = 0; i < node.childNodes.length; i++) {
+                        rightre(node.childNodes[i]);
+                    }
+                }
+            }
+        }
+
+        function isElementOnNewLine(element) {
+            // 判断一个元素节点是否独占一行
+            const style = window.getComputedStyle(element);  // 获取元素节点的计算样式
+            const blockElements = ['block', 'flex', 'table', 'table-row', 'list-item'];
+            // console.log(style.display);
+            if (blockElements.includes(style.display)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        function insertNode(fragment, editor) {
+            // 在editor的光標処插入fragment中的html
+            const lastChild = fragment.lastChild.lastChild;
+            const range = window.getSelection().getRangeAt(0);  // 获取当前选中的文本范围
+
+            let startNode = range.startContainer; // 获取起始节点
+            while (!startNode.parentElement.isSameNode(editor)) {
+                startNode = startNode.parentElement;
+            }
+
+            let endNode = range.endContainer; // 获取结束节点
+            while (!endNode.parentElement.isSameNode(editor)) {
+                endNode = endNode.parentElement;
+            }
+
+            range.deleteContents();  // 删除当前选中的文本
+
+            let selectNode = range.startContainer; // 获取選中节点
+            let selectIndex = range.startOffset; // 获取選中节点的偏移量
+            // console.log(selectNode);
+            // console.log(selectIndex);
+
+            editor.removeChild(startNode);
+            if (startNode.isSameNode(endNode)) {
+                let result = splitNode(startNode, selectNode, selectIndex);  // 進行拆分
+                startNode = result[0];
+                endNode = result[1];
+            } else {
+                editor.removeChild(endNode);
+            }
+            // console.log("Start Node: ", startNode);
+            // console.log("End Node: ", endNode);
+
+            while (startNode.lastChild) {
+                fragment.firstChild.insertBefore(startNode.lastChild, fragment.firstChild.firstChild);
+            }
+
+            while (endNode.firstChild) {
+                fragment.lastChild.appendChild(endNode.firstChild);
+            }
+
+            range.insertNode(fragment);
+
+            const newRange = document.createRange();  // 创建一个新的 Range 对象
+            newRange.setStartAfter(lastChild);  // 将 Range 的起始位置设置为lastChild的后面
+            window.getSelection().removeAllRanges();  // 刪除所有 Range 对象
+            window.getSelection().addRange(newRange);  // 重新设置选中状态，将光标放在lastChild后面
+        }
+
+        function splitNode(node, selectNode, selectIndex) {
+            // 將元素節點從光標処拆成兩個
+            if (node.nodeType != Node.ELEMENT_NODE) {
+                var startNode = document.createElement('p');
+                var endNode = document.createElement('p');
+                endNode.appendChild(node);
+                return [startNode, endNode];
+            } else if (node.textContent.trim() === '') {
+                var startNode = document.createElement('p');
+                var endNode = document.createElement('p');
+                return [startNode, endNode];
+            } else {
+                var clonedNode = node.cloneNode(false);
+                try {
+                    split(node, clonedNode);
+                } catch (e) {
+                    // console.log("捕获到异常: " + e.message);
+                }
+                return [clonedNode.firstChild, node];
+            }
+
+            function split(node, nodeL) {
+                if (node.contains(selectNode)) {
+                    if (node.isSameNode(selectNode)) {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            var clonedNode = node.cloneNode(false);
+                            nodeL.appendChild(clonedNode);
+                            for (var i = 0; i < selectIndex; i++) {
+                                clonedNode.appendChild(node.firstChild);
+                            }
+                        } else if (node.nodeType === Node.TEXT_NODE && node.nodeValue.trim() !== "") {
+                            var newNode = node.splitText(selectIndex);
+                            nodeL.appendChild(node);
+                        }
+                        // 直接跳出遞歸
+                        throw new Error("跳出递归函数");
+
+                    } else {
+                        var clonedNode = node.cloneNode(false);
+                        nodeL.appendChild(clonedNode);
+                        while (node.firstChild) {
+                            split(node.firstChild, clonedNode);
+                        }
+                    }
+                } else {
+                    nodeL.appendChild(node);
+                }
+            }
+        }
+
+        (function () {
+            // 在此處放置您要自動執行的程式碼
+        })();
+
+
+    </script>
+</body>
+
+</html>
